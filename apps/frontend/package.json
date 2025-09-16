@@ -1,0 +1,31 @@
+{
+  "name": "suivi-presences-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "format": "prettier -w ."
+  },
+  "dependencies": {
+    "axios": "^1.7.2",
+    "pinia": "^2.1.7",
+    "vue": "^3.4.29",
+    "vue-router": "^4.4.3"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.1.2",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9.9.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-vue": "^9.27.0",
+    "postcss": "^8.4.47",
+    "prettier": "^3.3.3",
+    "tailwindcss": "^3.4.10",
+    "vite": "^5.4.2",
+    "workbox-build": "^7.1.1"
+  }
+}
