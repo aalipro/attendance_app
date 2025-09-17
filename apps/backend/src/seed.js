@@ -3,6 +3,7 @@ import { ClassDAO } from './dao/classes.js';
 import { StudentDAO } from './dao/students.js';
 import { SessionDAO } from './dao/sessions.js';
 import { AttendanceDAO } from './dao/attendance.js';
+import bcrypt from 'bcrypt';
 
 function reset() {
   db.exec(`
@@ -12,6 +13,7 @@ function reset() {
     DROP TABLE IF EXISTS Session;
     DROP TABLE IF EXISTS Student;
     DROP TABLE IF EXISTS Class;
+    DROP TABLE IF EXISTS User;
     DROP TABLE IF EXISTS _migrations;
   `);
 }
@@ -32,8 +34,24 @@ function addStudentsForClass(classId, baseNumber) {
 
 function seed() {
   ensureDatabase();
-  const c1 = ClassDAO.create({ name: 'Terminale STMG A', level: 'Terminale', year: 2024 });
-  const c2 = ClassDAO.create({ name: 'Terminale STMG B', level: 'Terminale', year: 2024 });
+  // Create demo user (prof)
+  const demoEmail = 'demo@eps.fr';
+  const demoFullName = 'Prof Démo';
+  const demoPwd = 'demo123';
+  const existing = db.prepare(`SELECT * FROM User WHERE email = ?`).get(demoEmail);
+  let userId;
+  if (existing) {
+    userId = existing.id;
+  } else {
+    const hash = bcrypt.hashSync(demoPwd, 12);
+    const info = db
+      .prepare(`INSERT INTO User(email, passwordHash, fullName) VALUES (?, ?, ?)`)
+      .run(demoEmail, hash, demoFullName);
+    userId = info.lastInsertRowid;
+  }
+
+  const c1 = ClassDAO.create({ name: 'Terminale STMG A', level: 'Terminale', year: 2024, teacherId: userId });
+  const c2 = ClassDAO.create({ name: 'Terminale STMG B', level: 'Terminale', year: 2024, teacherId: userId });
 
   addStudentsForClass(c1.id, 1001);
   addStudentsForClass(c2.id, 2001);

@@ -1,16 +1,18 @@
 import express from 'express';
-import cors from 'cors';
 import morgan from 'morgan';
+import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { ensureDatabase, db } from './lib/db.js';
+import { notFoundMiddleware, errorMiddleware } from './middleware/error.js';
 import { router as apiRouter } from './routes/api.js';
-import { errorMiddleware, notFoundMiddleware } from './middleware/error.js';
+import { authRouter } from './routes/auth.js';
+import { authenticateJWT } from './middleware/auth.js';
+import { ensureDatabase, db } from './lib/db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Init DB (migrations)
+// Ensure DB and migrations are applied before serving API
 ensureDatabase();
 
 const app = express();
@@ -26,8 +28,11 @@ app.use(
 app.use(express.json({ limit: '2mb' }));
 app.use(morgan('dev'));
 
-// API routes
-app.use('/api', apiRouter);
+// Auth routes (publiques)
+app.use('/api/auth', authRouter);
+
+// API protégée par JWT
+app.use('/api', authenticateJWT, apiRouter);
 
 // Serve frontend in production, if present
 const frontendDist = path.resolve(__dirname, '../../frontend/dist');

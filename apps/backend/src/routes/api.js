@@ -21,10 +21,30 @@ import { StudentDAO } from '../dao/students.js';
 import { SessionDAO } from '../dao/sessions.js';
 import { AttendanceDAO } from '../dao/attendance.js';
 import { StatsDAO } from '../dao/stats.js';
+import { PurgeDAO } from '../dao/purge.js';
 import { toCsv, parseCsvStudents } from '../utils/csv.js';
 import { buildSessionPdf } from '../utils/pdf.js';
 
 export const router = express.Router();
+
+// Ownership helpers
+function ensureClassOwned(classId, teacherId) {
+  const c = ClassDAO.getOwned(classId, teacherId);
+  if (!c) throw Object.assign(new Error('Classe inconnue'), { status: 404, code: 'NOT_FOUND' });
+  return c;
+}
+function ensureSessionOwned(sessionId, teacherId) {
+  const s = SessionDAO.get(sessionId);
+  if (!s) throw Object.assign(new Error('Séance inconnue'), { status: 404, code: 'NOT_FOUND' });
+  ensureClassOwned(s.classId, teacherId);
+  return s;
+}
+function ensureStudentOwned(studentId, teacherId) {
+  const st = StudentDAO.get(studentId);
+  if (!st) throw Object.assign(new Error('Élève inconnu'), { status: 404, code: 'NOT_FOUND' });
+  ensureClassOwned(st.classId, teacherId);
+  return st;
+}
 
 // Helpers
 function parseQueryInt(q) {
@@ -36,7 +56,7 @@ function parseQueryInt(q) {
 router.get(
   '/classes',
   wrapAsync(async (req, res) => {
-    const list = ClassDAO.list();
+    const list = ClassDAO.listByTeacher(req.user.id);
     if (!sendWithETag(res, list, req)) return;
   }),
 );
@@ -45,7 +65,7 @@ router.post(
   '/classes',
   wrapAsync(async (req, res) => {
     const input = classCreateSchema.parse(req.body);
-    const created = ClassDAO.create(input);
+    const created = ClassDAO.create({ ...input, teacherId: req.user.id });
     res.status(201).json(created);
   }),
 );
@@ -55,7 +75,7 @@ router.put(
   wrapAsync(async (req, res) => {
     const id = idParam.parse(req.params.id);
     const patch = classUpdateSchema.parse(req.body);
-    const updated = ClassDAO.update(id, patch);
+    const updated = ClassDAO.update(id, patch, req.user.id);
     if (!updated) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Classe inconnue' } });
     res.json(updated);
   }),
@@ -65,6 +85,8 @@ router.delete(
   '/classes/:id',
   wrapAsync(async (req, res) => {
     const id = idParam.parse(req.params.id);
+    // ensure ownership
+    ensureClassOwned(id, req.user.id);
     ClassDAO.delete(id);
     res.status(204).end();
   }),
@@ -76,6 +98,7 @@ router.get(
   wrapAsync(async (req, res) => {
     const classId = parseQueryInt(req.query.classId);
     if (!classId) return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'classId requis' } });
+    ensureClassOwned(classId, req.user.id);
     const list = StudentDAO.listByClass(classId);
     if (!sendWithETag(res, list, req)) return;
   }),
@@ -86,7 +109,7 @@ router.post(
   wrapAsync(async (req, res) => {
     const input = studentCreateSchema.parse(req.body);
     // Vérifier que la classe existe
-    const klass = ClassDAO.get(input.classId);
+    const klass = ensureClassOwned(input.classId, req.user.id);
     if (!klass) {
       return res
         .status(400)
@@ -103,7 +126,7 @@ router.put(
     const id = idParam.parse(req.params.id);
     const patch = studentUpdateSchema.parse(req.body);
     if (patch.classId !== undefined) {
-      const klass = ClassDAO.get(patch.classId);
+      const klass = ensureClassOwned(patch.classId, req.user.id);
       if (!klass) {
         return res
           .status(400)
@@ -120,6 +143,7 @@ router.delete(
   '/students/:id',
   wrapAsync(async (req, res) => {
     const id = idParam.parse(req.params.id);
+    ensureStudentOwned(id, req.user.id);
     StudentDAO.delete(id);
     res.status(204).end();
   }),
@@ -131,6 +155,7 @@ router.post(
   wrapAsync(async (req, res) => {
     const classId = parseQueryInt(req.query.classId || req.body.classId);
     if (!classId) return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'classId requis' } });
+    ensureClassOwned(classId, req.user.id);
     const { csv } = req.body;
     if (!csv) return res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'csv requis' } });
     const rows = parseCsvStudents(csv);
@@ -166,6 +191,7 @@ router.get(
     const classId = parseQueryInt(req.query.classId);
     const from = req.query.from;
     const to = req.query.to;
+    if (classId) ensureClassOwned(classId, req.user.id);
     const list = SessionDAO.list({ classId, from, to });
     if (!sendWithETag(res, list, req)) return;
   }),
@@ -210,6 +236,7 @@ router.delete(
   '/sessions/:id',
   wrapAsync(async (req, res) => {
     const id = idParam.parse(req.params.id);
+    ensureSessionOwned(id, req.user.id);
     SessionDAO.delete(id);
     res.status(204).end();
   }),
@@ -230,6 +257,7 @@ router.get(
   '/sessions/:id/attendance',
   wrapAsync(async (req, res) => {
     const id = idParam.parse(req.params.id);
+    ensureSessionOwned(id, req.user.id);
     const list = AttendanceDAO.getForSession(id);
     res.json(list);
   }),
@@ -239,7 +267,9 @@ router.put(
   '/sessions/:id/attendance/:studentId',
   wrapAsync(async (req, res) => {
     const sessionId = idParam.parse(req.params.id);
+    ensureSessionOwned(sessionId, req.user.id);
     const studentId = idParam.parse(req.params.studentId);
+    ensureStudentOwned(studentId, req.user.id);
     const { status } = setAttendanceSchema.parse(req.body);
     AttendanceDAO.setStatus(sessionId, studentId, status);
     res.json({ ok: true });
@@ -338,6 +368,7 @@ router.get(
   '/stats/class/:classId',
   wrapAsync(async (req, res) => {
     const classId = idParam.parse(req.params.classId);
+    ensureClassOwned(classId, req.user.id);
     const { from, to } = req.query;
     const stats = StatsDAO.classStats(classId, { from, to });
     res.json(stats);
@@ -352,5 +383,23 @@ router.get(
     const stats = StatsDAO.studentStats(studentId, { from, to });
     if (!stats) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Élève inconnu' } });
     res.json(stats);
+  }),
+);
+
+// Settings: Purge all sessions for current teacher
+router.delete(
+  '/settings/purge-sessions',
+  wrapAsync(async (req, res) => {
+    PurgeDAO.purgeSessionsOnly(req.user.id);
+    res.json({ ok: true });
+  }),
+);
+
+// Settings: Purge all data (classes, students, sessions, attendance, grades, remarks) for current teacher
+router.delete(
+  '/settings/purge-all',
+  wrapAsync(async (req, res) => {
+    PurgeDAO.purgeTeacher(req.user.id);
+    res.json({ ok: true });
   }),
 );
