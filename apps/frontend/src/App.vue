@@ -12,7 +12,10 @@
         <RouterLink class="nav-link" active-class="nav-active" to="/stats">Statistiques</RouterLink>
         <RouterLink class="nav-link" active-class="nav-active" to="/settings">Paramètres</RouterLink>
       </nav>
-      <div class="p-4 text-xs text-gray-500 border-t">SQLite: data/app.sqlite</div>
+      <div class="p-4 border-t space-y-2">
+        <button class="w-full text-left nav-link" @click="onLogout">Se déconnecter</button>
+        <div class="text-xs text-gray-500">SQLite: data/app.sqlite</div>
+      </div>
     </aside>
 
     <!-- Main -->
@@ -27,6 +30,7 @@
           <RouterLink class="btn-outline" to="/sessions" @click="menuOpen=false">Séances</RouterLink>
           <RouterLink class="btn-outline" to="/stats" @click="menuOpen=false">Stats</RouterLink>
           <RouterLink class="btn-outline" to="/settings" @click="menuOpen=false">Paramètres</RouterLink>
+          <button class="btn-outline" @click="onLogout">Déconnexion</button>
         </div>
       </header>
       <main class="p-4">
@@ -42,9 +46,19 @@
 
 <script setup>
 import { ref } from 'vue';
-import { RouterLink, RouterView } from 'vue-router';
+import { RouterLink, RouterView, useRouter } from 'vue-router';
+import { clearAuthToken } from './api';
+import { useToastStore } from './stores/toast';
 import Toast from './components/ui/Toast.vue';
 const menuOpen = ref(false);
+const router = useRouter();
+const toast = useToastStore();
+
+function onLogout() {
+  clearAuthToken();
+  toast.push('Déconnecté ✔️');
+  router.replace('/login');
+}
 </script>
 
 <style scoped>
